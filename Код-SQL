@@ -1,0 +1,20 @@
+select *
+from
+(select *, row_number() over(partition by qq.sessions order by qq.max desc)
+from
+(select s.sessions, s.value, max(s.count + 1) --(добавляем  одну единицу подсчета в value)
+from
+(select *, count(a.value) over(partition by a.sessions, a.value order by a.event_time)
+from
+(select *, lead(q.value) over (partition by q.sessions order by event_time)
+from
+(select  *, sum(CASE WHEN time > '00:04:00' THEN 1 ELSE 0 end) over (order by event_time::time) as sessions
+from
+(select *, lead(event_time::time) over(order by event_time::time) - event_time::time as time
+from logs
+order by event_time) -- вычитаем разницу последующей минуты 
+where event = 'template_selected') q -- создаем сессию если разница между минутами больше 5 то это новая сессия , и  оставляем в столбце value только шаблоны 'template_selected'
+order by q.event_time, q.sessions)a -- получаем пред. значение value 
+where a.value = a.lead) s-- убираем значения не идущие подряд 2 и более раз (теряем одну единицу подсчета в value) считаем кол-во шаблонов в сессии 
+group by s.sessions, s.value) qq) aa --  как часто применяются шаблоны подряд в одной сессии 
+where aa.row_number < 6 -- выводим 5 шаблонов из каждой сессии 
